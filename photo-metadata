@@ -189,7 +189,7 @@ if ($argv[1] == '--write-date') {
   }
   $image = new Image();
   $image->writeIPTCdate($argv[2], $argv[3]);
-  echo 'Wrote IPTC date '.$argv[3].' to file: '.$argv[2];
+  echo 'Wrote IPTC date '.$argv[3].' to file: '.$argv[2].PHP_EOL;
 }
 
 if ($argv[1] == '--read-date') {
