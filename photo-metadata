@@ -1,0 +1,203 @@
+#!/usr/bin/php
+<?php
+
+if (php_sapi_name() != 'cli') {
+  exit('Run this script from the command line, not the browser.');
+}
+
+// date_default_timezone_set('America/Los_Angeles');
+ini_set('memory_limit','8M');
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+class Image {
+
+  static public function makeIPTCtag($rec, $data, $value) {
+
+    $length = strlen($value);
+    $retval = chr(0x1C).chr($rec).chr($data);
+
+    if ($length < 0x8000) {
+      $retval .= chr($length >> 8).chr($length & 0xFF);
+    } else {
+      $retval .= chr(0x80).chr(0x04).chr(($length >> 24) & 0xFF).chr(($length >> 16) & 0xFF).chr(($length >> 8) & 0xFF).chr($length & 0xFF);
+    }
+
+    return $retval.$value;
+
+  }
+
+  static public function embedIPTC($image, $iptc_data) {
+
+    // Convert the IPTC tags into binary code.
+    $data = '';
+    foreach($iptc_data as $tag => $string) {
+      $tag = substr($tag, 2);
+      $data .= self::makeIPTCtag(2, $tag, $string);
+    }
+
+    $content = iptcembed($data, $image);
+
+    // Write the new image data out to the file.
+    $fp = fopen($image, 'wb');
+    fwrite($fp, $content);
+    fclose($fp);
+
+    return;
+
+  }
+
+  public function writeIPTCdate($image, $date) {
+
+    if (!file_exists($image)) {
+      exit('That file does not exist.'.PHP_EOL);
+    }
+
+    // TODO: Validate that $date is a sting like: `20150515`
+
+    $iptc_data = array (
+      '2#055' => $date,
+    );
+
+    self::embedIPTC($image, $iptc_data);
+
+    return;
+
+  }
+
+  public function read($path) {
+
+    $url = new URL();
+    $output = '';
+
+    if ($url->validate($path)) {
+      // Download the file to this directory.
+      file_put_contents(__DIR__.'/'.basename($path), file_get_contents($path));
+      // Set the $path to the newly downloaded local file.
+      $image = __DIR__.'/'.basename($path);
+    } else {
+      $image = $path;
+    }
+
+    if (!file_exists($image)) {
+      exit('File does not exist at that path.'.PHP_EOL);
+    }
+
+    $image_data = @exif_read_data($path, 0, true, false);
+
+    $iptc = getimagesize($image, $info);
+
+    if (isset($info['APP13'])) {
+
+      $iptc_data = iptcparse($info['APP13']);
+
+      if (isset($iptc_data['2#000'])) {
+        // https://www.iptc.org/std/photometadata/documentation/userguide/#!Documents/rightsinformation.htm
+        $image_data['IPTC']['Description'] = $iptc_data['2#000'][0];
+      }
+
+      if (isset($iptc_data['2#055'])) {
+       $image_data['IPTC']['Date'] = $iptc_data['2#055'][0];
+      }
+
+      if (isset($iptc_data['2#080'])) {
+        $image_data['IPTC']['Creator'] = $iptc_data['2#080'][0];
+      }
+
+      if (isset($iptc_data['2#116'])) {
+        $image_data['IPTC']['Copywrite'] = $iptc_data['2#116'][0];
+      }
+
+      if (isset($iptc_data['2#120'])) {
+        $image_data['IPTC']['Caption'] = $iptc_data['2#120'][0];
+      }
+
+    } // IPTC
+
+    // Delete the local file IF it was downloaded.
+    if ($url->validate($path)) {
+      unlink(__DIR__.'/'.basename($path));
+    }
+
+    return $image_data;
+
+  }
+
+  public function readDate($image) {
+
+    $image_data = $this->read($image);
+    $output = '';
+
+    if (isset($image_data['IPTC']['Date'])) {
+      $output .= 'IPTC Date: '.date('Y:m:d H:i:s', strtotime($image_data['IPTC']['Date'])).PHP_EOL;
+    }
+
+    if (isset($image_data['EXIF']['DateTimeOriginal'])) {
+      $output .= 'EXIF Date: '.$image_data['EXIF']['DateTimeOriginal'].PHP_EOL;
+    } elseif (isset($image_data['EXIF']['DateTimeDigitized'])) {
+      $output .= 'EXIF Date: '.$image_data['EXIF']['DateTimeDigitized'].PHP_EOL;
+    } elseif (isset($image_data['IFD0']['DateTime'])) {
+      $output .= 'EXIF Date: '.$image_data['IFD0']['DateTime'].PHP_EOL;
+    }
+
+    return $output;
+
+  }
+
+} // class Image
+
+class URL {
+
+  public function validate($url) {
+
+    if (filter_var($url, FILTER_VALIDATE_URL) == false || preg_match("/(https?:\/\/.*\.(?:png|jpg|jpeg|gif))/i", $url) != 1 || empty($url)) {
+      return false;
+    } else {
+      return true;
+    }
+
+  }
+
+}
+
+$possible_commands = array(
+  '--write-date',
+  '--read-date',
+  '--read'
+);
+
+if (!isset($argv[0]) || !isset($argv[1]) || !isset($argv[2])) {
+  exit('Usage: https://github.com/jonathanbell/photo-metadata#photo-metadata'.PHP_EOL);
+}
+
+if (!in_array($argv[1], $possible_commands)) {
+  exit('Improper command.'.PHP_EOL);
+}
+
+if (empty($argv[2])) {
+  exit('No image parameter.'.PHP_EOL);
+}
+
+if ($argv[1] == '--read') {
+  $image = new Image();
+  print_r($image->read($argv[2]));
+}
+
+if ($argv[1] == '--write-date') {
+  if (!isset($argv[3])) {
+    exit('No date parameter.'.PHP_EOL);
+  }
+  $image = new Image();
+  $image->writeIPTCdate($argv[2], $argv[3]);
+  echo 'Wrote IPTC date '.$argv[3].' to file: '.$argv[2];
+}
+
+if ($argv[1] == '--read-date') {
+  $image = new Image();
+  $str = $image->readDate($argv[2]);
+  if ($str == '') {
+    echo 'No date information found.'.PHP_EOL;
+  } else {
+    echo $str;
+  }
+}
