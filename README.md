@@ -41,3 +41,7 @@ Write (or overwrite) IPTC date to a local image file:
 # Currently, this parameter is not validated.
 php photo-metadata --write-date /path/to/image.[jpg|JPG|png] 20170101
 ```
+
+## Requirements
+
+Requires, basically, just PHP. The `--remove-data` option requires [Imagick](http://php.net/manual/en/book.imagick.php).

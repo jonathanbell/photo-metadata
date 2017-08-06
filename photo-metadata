@@ -144,6 +144,27 @@ class Image {
 
   }
 
+  public function removeData($image) {
+
+    try {
+
+      $img = new Imagick($image);
+      $img->stripImage();
+      $img->writeImage($image);
+      $img->clear();
+      $img->destroy();
+
+      return true;
+
+    } catch(Exception $e) {
+
+      echo 'Exception caught: ', $e->getMessage().PHP_EOL;
+      return false;
+
+    }
+
+  }
+
 } // class Image
 
 class URL {
@@ -163,7 +184,8 @@ class URL {
 $possible_commands = array(
   '--write-date',
   '--read-date',
-  '--read'
+  '--read',
+  '--remove-data'
 );
 
 if (!isset($argv[0]) || !isset($argv[1]) || !isset($argv[2])) {
@@ -171,7 +193,7 @@ if (!isset($argv[0]) || !isset($argv[1]) || !isset($argv[2])) {
 }
 
 if (!in_array($argv[1], $possible_commands)) {
-  exit('Improper command.'.PHP_EOL);
+  exit('Improper option.'.PHP_EOL);
 }
 
 if (empty($argv[2])) {
@@ -199,5 +221,13 @@ if ($argv[1] == '--read-date') {
     echo 'No date information found.'.PHP_EOL;
   } else {
     echo $str;
+  }
+}
+
+if ($argv[1] == '--remove-data') {
+  $image = new Image();
+  $str = $image->removeData($argv[2]);
+  if ($str) {
+    echo 'EXIF data removed from image.'.PHP_EOL;
   }
 }
